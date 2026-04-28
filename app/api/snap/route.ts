@@ -43,21 +43,34 @@ const DEMO_HTML = `<!doctype html>
   </header>
   <main>
     <h2>This is a demo render.</h2>
-    <p>Set <code>ANTHROPIC_API_KEY</code> in your environment to enable real screenshot-to-HTML generation. Drop any screenshot in the box and Claude will output a single-file HTML clone.</p>
+    <p>To run real generations, paste your Anthropic API key in the top-right of the app. Your key is stored only in your browser and is never logged or saved on this server.</p>
     <a class="cta" href="#">Get started</a>
   </main>
 </body>
 </html>`;
 
-function getDemoMode(): boolean {
-  if (process.env.DEMO_MODE === "1") return true;
-  return !process.env.ANTHROPIC_API_KEY;
+function pickKey(req: NextRequest): { key: string | null; source: "user" | "server" | "none" } {
+  // 1) User-provided key from header (BYOK)
+  const headerKey = req.headers.get("x-api-key")?.trim();
+  if (headerKey && headerKey.startsWith("sk-")) {
+    return { key: headerKey, source: "user" };
+  }
+  // 2) Server-side key (admin/local)
+  const envKey = process.env.ANTHROPIC_API_KEY?.trim();
+  if (envKey) {
+    return { key: envKey, source: "server" };
+  }
+  return { key: null, source: "none" };
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json()) as { image?: string; mediaType?: string };
-    const { image, mediaType } = body;
+    const body = (await req.json()) as {
+      image?: string;
+      mediaType?: string;
+      demo?: boolean;
+    };
+    const { image, mediaType, demo } = body;
 
     if (!image) {
       return NextResponse.json(
@@ -66,11 +79,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (getDemoMode()) {
+    // Explicit demo request from client
+    if (demo) {
       return NextResponse.json({ html: DEMO_HTML, demo: true });
     }
 
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
+    const { key, source } = pickKey(req);
+
+    // No key anywhere → demo
+    if (!key) {
+      return NextResponse.json({
+        html: DEMO_HTML,
+        demo: true,
+        notice:
+          "No API key set. Paste your Anthropic key in the top-right to enable real generations.",
+      });
+    }
+
+    const client = new Anthropic({ apiKey: key });
     const model = process.env.CLAUDE_MODEL || "claude-3-5-sonnet-latest";
 
     const allowedTypes = ["image/png", "image/jpeg", "image/webp", "image/gif"] as const;
@@ -106,12 +132,16 @@ export async function POST(req: NextRequest) {
       .join("\n")
       .trim();
 
-    // Strip ``` fences if the model included any.
     html = html.replace(/^```(?:html)?\s*/i, "").replace(/```\s*$/i, "");
 
-    return NextResponse.json({ html, demo: false });
+    return NextResponse.json({ html, demo: false, source });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    // Surface Anthropic auth errors helpfully
+    const isAuth = /401|invalid api key|authentication/i.test(msg);
+    return NextResponse.json(
+      { error: isAuth ? "Invalid API key. Check the key in the top-right." : msg },
+      { status: isAuth ? 401 : 500 }
+    );
   }
 }

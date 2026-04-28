@@ -13,6 +13,8 @@ const LOADING_MESSAGES = [
   "INLINING STYLES",
 ];
 
+const KEY_STORAGE = "prompt-snap.anthropic-key";
+
 function LoadingPanel() {
   const [i, setI] = useState(0);
   useEffect(() => {
@@ -34,42 +36,170 @@ function LoadingPanel() {
   );
 }
 
+function KeyModal({
+  open,
+  initial,
+  onSave,
+  onClose,
+  onClear,
+}: {
+  open: boolean;
+  initial: string;
+  onSave: (k: string) => void;
+  onClose: () => void;
+  onClear: () => void;
+}) {
+  const [val, setVal] = useState(initial);
+  useEffect(() => setVal(initial), [initial, open]);
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/80 px-4">
+      <div className="w-full max-w-lg border border-[#2a2a2a] bg-black p-6 md:p-8">
+        <div className="flex items-center justify-between mb-4">
+          <div className="text-xs uppercase tracking-widest text-[#888]">
+            Anthropic API key
+          </div>
+          <button
+            onClick={onClose}
+            className="text-[#888] hover:text-white text-sm"
+          >
+            ✕
+          </button>
+        </div>
+        <h2 className="text-xl font-bold mb-3">Bring your own key</h2>
+        <p className="text-sm text-[#aaa] leading-relaxed mb-5">
+          Paste your Anthropic key. It is stored only in this browser
+          (<code className="text-[#cfcfcf]">localStorage</code>) and sent
+          directly with each request — never logged or saved on our server.
+        </p>
+        <input
+          type="password"
+          autoFocus
+          spellCheck={false}
+          autoComplete="off"
+          placeholder="sk-ant-..."
+          value={val}
+          onChange={(e) => setVal(e.target.value)}
+          className="w-full bg-black border border-[#2a2a2a] focus:border-white outline-none px-3 py-3 text-sm font-mono"
+        />
+        <div className="mt-3 text-xs text-[#666]">
+          Get one at{" "}
+          <a
+            className="text-[#cfcfcf] hover:text-white underline underline-offset-2"
+            href="https://console.anthropic.com/settings/keys"
+            target="_blank"
+            rel="noreferrer"
+          >
+            console.anthropic.com
+          </a>
+          . $5 free credit on signup.
+        </div>
+        <div className="mt-6 flex flex-wrap gap-3 justify-end">
+          {initial && (
+            <button
+              onClick={() => {
+                onClear();
+                onClose();
+              }}
+              className="px-3 py-2 border border-[#2a2a2a] text-[#888] hover:text-white text-xs"
+            >
+              CLEAR
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            className="px-3 py-2 border border-[#2a2a2a] text-[#888] hover:text-white text-xs"
+          >
+            CANCEL
+          </button>
+          <button
+            onClick={() => {
+              onSave(val.trim());
+              onClose();
+            }}
+            disabled={!val.trim().startsWith("sk-")}
+            className="px-3 py-2 border border-white hover:bg-white hover:text-black disabled:opacity-30 disabled:cursor-not-allowed text-xs"
+          >
+            SAVE KEY
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const [status, setStatus] = useState<Status>("idle");
   const [html, setHtml] = useState<string>("");
   const [error, setError] = useState<string>("");
   const [demo, setDemo] = useState<boolean>(false);
+  const [notice, setNotice] = useState<string>("");
   const [view, setView] = useState<"preview" | "code">("preview");
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [apiKey, setApiKey] = useState<string>("");
+  const [keyModalOpen, setKeyModalOpen] = useState<boolean>(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
-  const send = useCallback(async (file: File) => {
-    setStatus("loading");
-    setError("");
-    setHtml("");
-    setImagePreview(URL.createObjectURL(file));
-
+  // Load key from localStorage on mount
+  useEffect(() => {
     try {
-      const buf = await file.arrayBuffer();
-      const base64 = btoa(
-        new Uint8Array(buf).reduce((s, b) => s + String.fromCharCode(b), "")
-      );
-      const res = await fetch("/api/snap", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ image: base64, mediaType: file.type || "image/png" }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "request failed");
-      setHtml(data.html);
-      setDemo(!!data.demo);
-      setStatus("ready");
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "unknown error";
-      setError(msg);
-      setStatus("error");
-    }
+      const k = localStorage.getItem(KEY_STORAGE);
+      if (k) setApiKey(k);
+    } catch {}
   }, []);
+
+  const saveKey = (k: string) => {
+    try {
+      if (k) localStorage.setItem(KEY_STORAGE, k);
+      else localStorage.removeItem(KEY_STORAGE);
+    } catch {}
+    setApiKey(k);
+  };
+
+  const send = useCallback(
+    async (file: File, opts: { demo?: boolean } = {}) => {
+      setStatus("loading");
+      setError("");
+      setHtml("");
+      setNotice("");
+      setImagePreview(URL.createObjectURL(file));
+
+      try {
+        const buf = await file.arrayBuffer();
+        const base64 = btoa(
+          new Uint8Array(buf).reduce(
+            (s, b) => s + String.fromCharCode(b),
+            ""
+          )
+        );
+        const headers: Record<string, string> = {
+          "content-type": "application/json",
+        };
+        if (apiKey) headers["x-api-key"] = apiKey;
+
+        const res = await fetch("/api/snap", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            image: base64,
+            mediaType: file.type || "image/png",
+            demo: !!opts.demo,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "request failed");
+        setHtml(data.html);
+        setDemo(!!data.demo);
+        if (data.notice) setNotice(data.notice);
+        setStatus("ready");
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : "unknown error";
+        setError(msg);
+        setStatus("error");
+      }
+    },
+    [apiKey]
+  );
 
   // Drag-drop
   useEffect(() => {
@@ -105,6 +235,7 @@ export default function Home() {
     setHtml("");
     setError("");
     setImagePreview(null);
+    setNotice("");
   };
 
   const copyCode = async () => {
@@ -121,23 +252,46 @@ export default function Home() {
     URL.revokeObjectURL(url);
   };
 
+  const keySet = Boolean(apiKey);
+
   return (
     <main className="min-h-screen flex flex-col">
+      <KeyModal
+        open={keyModalOpen}
+        initial={apiKey}
+        onSave={saveKey}
+        onClose={() => setKeyModalOpen(false)}
+        onClear={() => saveKey("")}
+      />
+
       {/* HEADER */}
-      <header className="flex justify-between items-center px-6 md:px-10 py-5 border-b border-[#2a2a2a]">
-        <div className="flex items-center gap-3">
+      <header className="flex justify-between items-center px-6 md:px-10 py-5 border-b border-[#2a2a2a] gap-4">
+        <div className="flex items-center gap-3 min-w-0">
           <span className="font-bold tracking-tight text-lg">PROMPT-SNAP</span>
-          <span className="text-xs text-[#888]">screenshot → html/css</span>
+          <span className="text-xs text-[#888] hidden sm:inline">
+            screenshot → html/css
+          </span>
         </div>
-        <div className="flex items-center gap-4 text-xs text-[#888]">
-          {demo && (
-            <span className="px-2 py-0.5 border border-[#888] text-[#888]">
-              DEMO MODE
-            </span>
-          )}
+        <div className="flex items-center gap-3 text-xs">
+          <button
+            onClick={() => setKeyModalOpen(true)}
+            className={`px-2 py-1 border flex items-center gap-2 transition-colors ${
+              keySet
+                ? "border-emerald-400/60 text-emerald-400 hover:border-emerald-400"
+                : "border-amber-400/60 text-amber-400 hover:border-amber-400"
+            }`}
+            title={keySet ? "API key set" : "Click to set your Anthropic key"}
+          >
+            <span
+              className={`inline-block w-1.5 h-1.5 rounded-full ${
+                keySet ? "bg-emerald-400" : "bg-amber-400 animate-pulse"
+              }`}
+            />
+            {keySet ? "KEY SET" : "SET KEY"}
+          </button>
           <a
             href="https://github.com/Kartikkapoor8/prompt-snap"
-            className="hover:text-white"
+            className="text-[#888] hover:text-white"
             target="_blank"
             rel="noreferrer"
           >
@@ -145,6 +299,23 @@ export default function Home() {
           </a>
         </div>
       </header>
+
+      {/* BYOK BANNER (only when no key set) */}
+      {!keySet && (
+        <div className="border-b border-[#2a2a2a] bg-amber-400/[0.03] px-6 md:px-10 py-3 text-xs text-amber-200 flex flex-wrap items-center justify-between gap-3">
+          <span>
+            <strong className="text-amber-300">BRING YOUR OWN KEY.</strong>{" "}
+            Paste your Anthropic key to run real generations. It stays in your
+            browser — never on our server.
+          </span>
+          <button
+            onClick={() => setKeyModalOpen(true)}
+            className="px-3 py-1 border border-amber-400/60 hover:bg-amber-400 hover:text-black text-amber-300 hover:text-black transition-colors"
+          >
+            SET KEY
+          </button>
+        </div>
+      )}
 
       {/* MAIN */}
       <section className="flex-1 grid grid-cols-1 lg:grid-cols-2">
@@ -163,8 +334,8 @@ export default function Home() {
                 drop · paste · click
               </div>
               <div className="text-xs text-[#888] max-w-sm">
-                PNG / JPG / WEBP — anywhere on this page. Or paste from clipboard
-                (⌘V). Or click to choose a file.
+                PNG / JPG / WEBP — anywhere on this page. Or paste from
+                clipboard (⌘V). Or click to choose a file.
               </div>
               <input
                 ref={fileInput}
@@ -200,8 +371,13 @@ export default function Home() {
         {/* RIGHT — output */}
         <div className="p-6 md:p-10 flex flex-col">
           <div className="flex items-center justify-between mb-4">
-            <div className="text-xs uppercase tracking-widest text-[#888]">
+            <div className="text-xs uppercase tracking-widest text-[#888] flex items-center gap-2">
               02 — Generated HTML
+              {demo && (
+                <span className="px-2 py-0.5 border border-amber-400/60 text-amber-300">
+                  DEMO
+                </span>
+              )}
             </div>
             {status === "ready" && (
               <div className="flex gap-2 text-xs">
@@ -228,6 +404,10 @@ export default function Home() {
               </div>
             )}
           </div>
+
+          {notice && (
+            <div className="mb-3 text-xs text-amber-300">{notice}</div>
+          )}
 
           <div className="flex-1 min-h-[320px] border border-[#2a2a2a] flex flex-col">
             {status === "idle" && (
@@ -293,7 +473,7 @@ export default function Home() {
 
       {/* FOOTER */}
       <footer className="px-6 md:px-10 py-4 border-t border-[#2a2a2a] flex flex-wrap justify-between gap-2 text-xs text-[#888]">
-        <span>BUILT WITH NEXT.JS · CLAUDE 3.5 SONNET</span>
+        <span>BUILT WITH NEXT.JS · CLAUDE 3.5 SONNET · BRING YOUR OWN KEY</span>
         <span>
           BY{" "}
           <a
