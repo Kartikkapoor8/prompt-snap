@@ -104,7 +104,7 @@ Frontend prototyping is bottlenecked on translating a screenshot into structure.
 
 ## Author
 
-[Kartik Kapoor](https://github.com/Kartikkapoor8). Built in a day.
+[Kartik Kapoor](https://github.com/Kartikkapoor8)
 
 ## License
 
