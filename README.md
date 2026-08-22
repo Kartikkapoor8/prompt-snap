@@ -1,8 +1,10 @@
 # prompt-snap
 
-> **Drop a screenshot. Get a working HTML clone.**
-> Vision-model-powered screenshot → single-file HTML/CSS, in one click.
-> **Bring your own Anthropic key** — runs entirely on your credits, never on mine.
+Drop a screenshot into the browser and get back a working single-file HTML clone of it.
+
+The image goes to a Claude vision model, which returns one self-contained HTML file with inline CSS. It renders live in a sandboxed iframe next to the original so you can compare them, then copy or download it. Every visitor supplies their own Anthropic key, stored in their own browser, so a public deployment cannot run up the host's bill.
+
+**Stack:** Next.js 14 (App Router), TypeScript, Tailwind, Anthropic SDK, deployed on Vercel.
 
 ![cover](cover.png)
 
@@ -30,24 +32,24 @@ Drop, paste, or click a screenshot. The image plus your **Anthropic key** is for
        └─ download .html
 ```
 
-## BYOK — bring your own key
+## BYOK, bring your own key
 
 The deployed app **does not ship with an API key**. Every visitor brings their own Anthropic key, which lives in `localStorage` on their browser and is sent with each request via an `x-api-key` header. The Next.js route uses the key for that single request and **never persists or logs it**.
 
 This means:
-- **No abuse risk** — the host's bill cannot be run up by random visitors
-- **No vendor lock-in** — users keep their keys, can revoke any time
-- **Privacy** — keys never touch a database, log, or third party other than Anthropic itself
+- **No abuse risk.** The host's bill cannot be run up by random visitors.
+- **No vendor lock-in.** Users keep their keys and can revoke at any time.
+- **Privacy.** Keys never touch a database, log, or third party other than Anthropic itself.
 
 ## Features
 
-- 🔑 **Bring your own key** — paste once, stored in your browser only
-- 🎯 **Drop · Paste · Click** — three ways to upload
-- 🖼 **Live iframe preview** — instant visual diff against the original
-- 📋 **Copy / Download** — single-file HTML, ready to ship
-- 🔒 **Sandboxed render** — generated HTML runs in a sandboxed iframe
-- 🎭 **Demo mode** — works without any key, returns a canned response
-- 🌑 **Brutalist gradient UI** — opinionated, monospace, zero filler
+- 🔑 **Bring your own key.** Paste once, stored in your browser only.
+- 🎯 **Drop, paste, or click.** Three ways to upload.
+- 🖼 **Live iframe preview.** Instant visual diff against the original.
+- 📋 **Copy or download.** Single-file HTML, ready to ship.
+- 🔒 **Sandboxed render.** Generated HTML runs in a sandboxed iframe.
+- 🎭 **Demo mode.** Works without any key, returns a canned response.
+- 🌑 **Brutalist gradient UI.** Opinionated, monospace, zero filler.
 
 ## Stack
 
@@ -66,7 +68,7 @@ Open `http://localhost:3000` and click **SET KEY** in the top right.
 
 ## Deploy
 
-Hit the **Deploy with Vercel** button at the top. **No environment variables required** — visitors will paste their own keys in the UI. Deploy time: ~90 seconds.
+Hit the **Deploy with Vercel** button at the top. **No environment variables required**, since visitors paste their own keys in the UI. Deploy time is about 90 seconds.
 
 ## Environment (optional)
 
@@ -115,7 +117,7 @@ The API route never:
 
 ## Why
 
-Frontend prototyping is bottlenecked on translating a screenshot into structure. Vision models removed that bottleneck. This is the smallest possible UI that exposes that capability — drop, get HTML, ship — without putting the host on the hook for everyone's API spend.
+Frontend prototyping is bottlenecked on translating a screenshot into structure. Vision models removed that bottleneck. This is the smallest possible UI that exposes that capability, drop then get HTML then ship, without putting the host on the hook for everyone's API spend.
 
 ## Roadmap (ideas)
 
@@ -123,7 +125,7 @@ Frontend prototyping is bottlenecked on translating a screenshot into structure.
 - [ ] React component output mode
 - [ ] Multi-screenshot merge (whole-flow scaffolding)
 - [ ] Side-by-side diff: original screenshot vs rendered clone
-- [ ] Editable prompt — let users tune the system message live
+- [ ] Editable prompt, letting users tune the system message live
 - [ ] OpenAI / Gemini key support (multi-provider BYOK)
 
 ## Author
